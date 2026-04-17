@@ -103,14 +103,18 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
     int header_len = snprintf(header, sizeof(header), "%s %zu", type_str, len);
 
     size_t total_size = header_len + 1 + len;
+
     char *buffer = malloc(total_size);
+    if (!buffer) return -1;
 
     memcpy(buffer, header, header_len);
     buffer[header_len] = '\0';
     memcpy(buffer + header_len + 1, data, len);
 
+    // hash FULL object (header + \0 + data)
     compute_hash(buffer, total_size, id_out);
 
+    // deduplication
     if (object_exists(id_out)) {
         free(buffer);
         return 0;
@@ -137,7 +141,12 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
         return -1;
     }
 
-    write(fd, buffer, total_size);
+    if (write(fd, buffer, total_size) != (ssize_t)total_size) {
+        free(buffer);
+        close(fd);
+        return -1;
+    }
+
     fsync(fd);
     close(fd);
 
@@ -152,6 +161,7 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
     free(buffer);
     return 0;
 }
+
 // Read an object from the store.
 //
 // Steps:
@@ -174,7 +184,6 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
 //
 // The caller is responsible for calling free(*data_out).
 // Returns 0 on success, -1 on error (file not found, corrupt, etc.).
-
 int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_t *len_out) {
     char path[512];
     object_path(id, path, sizeof(path));
@@ -204,6 +213,7 @@ int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_
     }
     fclose(f);
 
+    // verify integrity
     ObjectID computed;
     compute_hash(buffer, size, &computed);
 
@@ -212,30 +222,35 @@ int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_
         return -1;
     }
 
+    // find separator between header and data
     char *sep = memchr(buffer, '\0', size);
     if (!sep || (sep - buffer) >= size - 1) {
         free(buffer);
         return -1;
     }
 
-    if (size >= 4 && strncmp(buffer, "blob", 4) == 0)
+    // parse type safely
+    if (strncmp(buffer, "blob", 4) == 0)
         *type_out = OBJ_BLOB;
-    else if (size >= 4 && strncmp(buffer, "tree", 4) == 0)
+    else if (strncmp(buffer, "tree", 4) == 0)
         *type_out = OBJ_TREE;
     else
         *type_out = OBJ_COMMIT;
 
     size_t data_len = size - (sep - buffer) - 1;
 
-    *data_out = malloc(data_len);
-    if (!*data_out) {
+    void *out = malloc(data_len);
+    if (!out) {
         free(buffer);
         return -1;
     }
 
-    memcpy(*data_out, sep + 1, data_len);
+    memcpy(out, sep + 1, data_len);
+
+    *data_out = out;
     *len_out = data_len;
 
     free(buffer);
     return 0;
 }
+  
