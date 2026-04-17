@@ -174,6 +174,7 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
 //
 // The caller is responsible for calling free(*data_out).
 // Returns 0 on success, -1 on error (file not found, corrupt, etc.).
+
 int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_t *len_out) {
     char path[512];
     object_path(id, path, sizeof(path));
@@ -183,10 +184,24 @@ int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_
 
     fseek(f, 0, SEEK_END);
     long size = ftell(f);
+    if (size <= 0) {
+        fclose(f);
+        return -1;
+    }
+
     fseek(f, 0, SEEK_SET);
 
     char *buffer = malloc(size);
-    fread(buffer, 1, size, f);
+    if (!buffer) {
+        fclose(f);
+        return -1;
+    }
+
+    if (fread(buffer, 1, size, f) != (size_t)size) {
+        free(buffer);
+        fclose(f);
+        return -1;
+    }
     fclose(f);
 
     ObjectID computed;
@@ -198,14 +213,14 @@ int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_
     }
 
     char *sep = memchr(buffer, '\0', size);
-    if (!sep) {
+    if (!sep || (sep - buffer) >= size - 1) {
         free(buffer);
         return -1;
     }
 
-    if (strncmp(buffer, "blob", 4) == 0)
+    if (size >= 4 && strncmp(buffer, "blob", 4) == 0)
         *type_out = OBJ_BLOB;
-    else if (strncmp(buffer, "tree", 4) == 0)
+    else if (size >= 4 && strncmp(buffer, "tree", 4) == 0)
         *type_out = OBJ_TREE;
     else
         *type_out = OBJ_COMMIT;
@@ -213,6 +228,11 @@ int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_
     size_t data_len = size - (sep - buffer) - 1;
 
     *data_out = malloc(data_len);
+    if (!*data_out) {
+        free(buffer);
+        return -1;
+    }
+
     memcpy(*data_out, sep + 1, data_len);
     *len_out = data_len;
 
