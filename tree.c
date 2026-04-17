@@ -15,6 +15,7 @@
 #include <string.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include "index.h"
 
 // ─── Mode Constants ─────────────────────────────────────────────────────────
 
@@ -143,13 +144,7 @@ int tree_from_index(ObjectID *id_out) {
     // (See Lab Appendix for logical steps)
     if (!id_out) return -1;
 
-    // We assume index_load fills a struct-like object
-    // that has entries + count (no Index type needed)
-
-    struct {
-        IndexEntry *entries;
-        size_t count;
-    } index;
+    Index index;
 
     if (index_load(&index) != 0)
         return -1;
