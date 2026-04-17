@@ -184,7 +184,9 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
 //
 // The caller is responsible for calling free(*data_out).
 // Returns 0 on success, -1 on error (file not found, corrupt, etc.).
-int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_t *len_out) {
+int object_read(const ObjectID *id, ObjectType *type_out,
+                void **data_out, size_t *len_out)
+{
     char path[512];
     object_path(id, path, sizeof(path));
 
@@ -193,12 +195,12 @@ int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_
 
     fseek(f, 0, SEEK_END);
     long size = ftell(f);
-    if (size <= 0) {
+    if (size <= 0 || size > 10 * 1024 * 1024) { // 10MB safety limit
         fclose(f);
         return -1;
     }
 
-    fseek(f, 0, SEEK_SET);
+    rewind(f);
 
     char *buffer = malloc(size);
     if (!buffer) {
@@ -222,22 +224,28 @@ int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_
         return -1;
     }
 
-    // find separator between header and data
+    // find separator
     char *sep = memchr(buffer, '\0', size);
-    if (!sep || (sep - buffer) >= size - 1) {
+    if (!sep) {
         free(buffer);
         return -1;
     }
 
-    // parse type safely
-    if (strncmp(buffer, "blob", 4) == 0)
-        *type_out = OBJ_BLOB;
-    else if (strncmp(buffer, "tree", 4) == 0)
-        *type_out = OBJ_TREE;
-    else
-        *type_out = OBJ_COMMIT;
+    size_t header_len = sep - buffer;
 
-    size_t data_len = size - (sep - buffer) - 1;
+    // parse type safely
+    if (strncmp(buffer, "blob", header_len) == 0)
+        *type_out = OBJ_BLOB;
+    else if (strncmp(buffer, "tree", header_len) == 0)
+        *type_out = OBJ_TREE;
+    else if (strncmp(buffer, "commit", header_len) == 0)
+        *type_out = OBJ_COMMIT;
+    else {
+        free(buffer);
+        return -1;
+    }
+
+    size_t data_len = size - header_len - 1;
 
     void *out = malloc(data_len);
     if (!out) {
@@ -253,4 +261,5 @@ int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_
     free(buffer);
     return 0;
 }
-  
+
+
