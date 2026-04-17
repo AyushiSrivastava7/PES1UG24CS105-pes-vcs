@@ -93,7 +93,10 @@ int object_exists(const ObjectID *id) {
 
 //
 // Returns 0 on success, -1 on error.
+
 int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out) {
+    if (!data || !id_out) return -1;
+
     char header[256];
 
     const char *type_str =
@@ -101,6 +104,10 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
         (type == OBJ_TREE) ? "tree" : "commit";
 
     int header_len = snprintf(header, sizeof(header), "%s %zu", type_str, len);
+
+    if (header_len <= 0 || header_len >= (int)sizeof(header)) {
+        return -1;
+    }
 
     size_t total_size = header_len + 1 + len;
 
@@ -111,7 +118,7 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
     buffer[header_len] = '\0';
     memcpy(buffer + header_len + 1, data, len);
 
-    // hash FULL object (header + \0 + data)
+    // hash full object
     compute_hash(buffer, total_size, id_out);
 
     // deduplication
@@ -142,17 +149,28 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
     }
 
     if (write(fd, buffer, total_size) != (ssize_t)total_size) {
-        free(buffer);
         close(fd);
+        free(buffer);
+        unlink(tmp_path);
         return -1;
     }
 
-    fsync(fd);
+    if (fsync(fd) != 0) {
+        close(fd);
+        free(buffer);
+        unlink(tmp_path);
+        return -1;
+    }
+
     close(fd);
 
-    rename(tmp_path, final_path);
+    if (rename(tmp_path, final_path) != 0) {
+        free(buffer);
+        unlink(tmp_path);
+        return -1;
+    }
 
-    int dirfd = open(dir, O_DIRECTORY);
+    int dirfd = open(dir, O_RDONLY | O_DIRECTORY);
     if (dirfd >= 0) {
         fsync(dirfd);
         close(dirfd);
@@ -187,6 +205,9 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
 int object_read(const ObjectID *id, ObjectType *type_out,
                 void **data_out, size_t *len_out)
 {
+    if (!id || !type_out || !data_out || !len_out)
+        return -1;
+
     *data_out = NULL;
     *len_out = 0;
 
@@ -196,7 +217,11 @@ int object_read(const ObjectID *id, ObjectType *type_out,
     FILE *f = fopen(path, "rb");
     if (!f) return -1;
 
-    fseek(f, 0, SEEK_END);
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        return -1;
+    }
+
     long size_l = ftell(f);
     if (size_l <= 0 || size_l > 10 * 1024 * 1024) {
         fclose(f);
@@ -212,11 +237,12 @@ int object_read(const ObjectID *id, ObjectType *type_out,
         return -1;
     }
 
-    if (fread(buffer, 1, size, f) != size) {
+    if (fread(buffer, 1, size, f) != size || ferror(f)) {
         free(buffer);
         fclose(f);
         return -1;
     }
+
     fclose(f);
 
     // integrity check
@@ -228,7 +254,7 @@ int object_read(const ObjectID *id, ObjectType *type_out,
         return -1;
     }
 
-    // split header and data
+    // split header/data
     char *sep = memchr(buffer, '\0', size);
     if (!sep) {
         free(buffer);
@@ -237,21 +263,19 @@ int object_read(const ObjectID *id, ObjectType *type_out,
 
     size_t header_len = (size_t)(sep - buffer);
 
-    // copy header into safe buffer
-    char header[256];
-    if (header_len >= sizeof(header)) {
+    if (header_len == 0 || header_len >= sizeof(char[256])) {
         free(buffer);
         return -1;
     }
 
+    char header[256];
     memcpy(header, buffer, header_len);
     header[header_len] = '\0';
 
-    // parse type + size
     char type_str[16];
     size_t declared_size = 0;
 
-    if (sscanf(header, "%15s %zu", type_str, &declared_size) != 2) {
+    if (sscanf(header, "%15s %zu %*s", type_str, &declared_size) != 2) {
         free(buffer);
         return -1;
     }
@@ -269,7 +293,6 @@ int object_read(const ObjectID *id, ObjectType *type_out,
 
     size_t data_len = size - header_len - 1;
 
-    // optional consistency check (VERY useful for debugging)
     if (declared_size != data_len) {
         free(buffer);
         return -1;
@@ -291,5 +314,5 @@ int object_read(const ObjectID *id, ObjectType *type_out,
 }
 
 
-
+// object.c — Content-addressable object store
 
