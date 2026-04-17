@@ -187,6 +187,9 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
 int object_read(const ObjectID *id, ObjectType *type_out,
                 void **data_out, size_t *len_out)
 {
+    *data_out = NULL;
+    *len_out = 0;
+
     char path[512];
     object_path(id, path, sizeof(path));
 
@@ -194,12 +197,13 @@ int object_read(const ObjectID *id, ObjectType *type_out,
     if (!f) return -1;
 
     fseek(f, 0, SEEK_END);
-    long size = ftell(f);
-    if (size <= 0 || size > 10 * 1024 * 1024) { // 10MB safety limit
+    long size_l = ftell(f);
+    if (size_l <= 0 || size_l > 10 * 1024 * 1024) {
         fclose(f);
         return -1;
     }
 
+    size_t size = (size_t)size_l;
     rewind(f);
 
     char *buffer = malloc(size);
@@ -208,14 +212,14 @@ int object_read(const ObjectID *id, ObjectType *type_out,
         return -1;
     }
 
-    if (fread(buffer, 1, size, f) != (size_t)size) {
+    if (fread(buffer, 1, size, f) != size) {
         free(buffer);
         fclose(f);
         return -1;
     }
     fclose(f);
 
-    // verify integrity
+    // integrity check
     ObjectID computed;
     compute_hash(buffer, size, &computed);
 
@@ -224,21 +228,39 @@ int object_read(const ObjectID *id, ObjectType *type_out,
         return -1;
     }
 
-    // find separator
+    // split header and data
     char *sep = memchr(buffer, '\0', size);
     if (!sep) {
         free(buffer);
         return -1;
     }
 
-    size_t header_len = sep - buffer;
+    size_t header_len = (size_t)(sep - buffer);
 
-    // parse type safely
-    if (strncmp(buffer, "blob", header_len) == 0)
+    // copy header into safe buffer
+    char header[256];
+    if (header_len >= sizeof(header)) {
+        free(buffer);
+        return -1;
+    }
+
+    memcpy(header, buffer, header_len);
+    header[header_len] = '\0';
+
+    // parse type + size
+    char type_str[16];
+    size_t declared_size = 0;
+
+    if (sscanf(header, "%15s %zu", type_str, &declared_size) != 2) {
+        free(buffer);
+        return -1;
+    }
+
+    if (strcmp(type_str, "blob") == 0)
         *type_out = OBJ_BLOB;
-    else if (strncmp(buffer, "tree", header_len) == 0)
+    else if (strcmp(type_str, "tree") == 0)
         *type_out = OBJ_TREE;
-    else if (strncmp(buffer, "commit", header_len) == 0)
+    else if (strcmp(type_str, "commit") == 0)
         *type_out = OBJ_COMMIT;
     else {
         free(buffer);
@@ -246,6 +268,12 @@ int object_read(const ObjectID *id, ObjectType *type_out,
     }
 
     size_t data_len = size - header_len - 1;
+
+    // optional consistency check (VERY useful for debugging)
+    if (declared_size != data_len) {
+        free(buffer);
+        return -1;
+    }
 
     void *out = malloc(data_len);
     if (!out) {
@@ -261,5 +289,7 @@ int object_read(const ObjectID *id, ObjectType *type_out,
     free(buffer);
     return 0;
 }
+
+
 
 
