@@ -132,10 +132,14 @@ int tree_serialize(const Tree *tree, void **data_out, size_t *len_out) {
 int tree_from_index(ObjectID *id_out) {
     // TODO: Implement recursive tree building
     // (See Lab Appendix for logical steps)
-    Index index;
+    if (!id_out) return -1;
 
+    Index index;
     if (index_load(&index) != 0)
         return -1;
 
-    return write_tree_level(index.entries, index.count, "", id_out);
+    return write_tree_level(index.entries,
+                            index.count,
+                            "",
+                            id_out);
 }
