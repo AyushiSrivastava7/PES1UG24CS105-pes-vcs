@@ -135,6 +135,8 @@ int tree_serialize(const Tree *tree, void **data_out, size_t *len_out) {
 
 // ─── HELPER FUNCTIONS ───────────────────────────────────────
 
+// ─── HELPER FUNCTIONS ───────────────────────────────────────
+
 static int starts_with(const char *path, const char *base) {
     size_t len = strlen(base);
     return strncmp(path, base, len) == 0;
@@ -167,19 +169,32 @@ static int write_tree_level(IndexEntry *entries,
 
         const char *slash = strchr(rest, '/');
 
+        // ─── FILE ─────────────────────────────
         if (!slash) {
+            if (tree.count >= MAX_TREE_ENTRIES)
+                return -1;
+
             TreeEntry *te = &tree.entries[tree.count++];
 
             te->mode = entries[i].mode;
-            strcpy(te->name, rest);
+
+            strncpy(te->name, rest, sizeof(te->name) - 1);
+            te->name[sizeof(te->name) - 1] = '\0';
+
             te->hash = entries[i].hash;
-        } else {
+        }
+        // ─── DIRECTORY ────────────────────────
+        else {
             size_t dir_len = slash - rest;
 
             char dirname[256];
+            if (dir_len >= sizeof(dirname))
+                return -1;
+
             strncpy(dirname, rest, dir_len);
             dirname[dir_len] = '\0';
 
+            // check if already processed
             int already = 0;
             for (size_t j = 0; j < seen_count; j++) {
                 if (strcmp(seen[j], dirname) == 0) {
@@ -187,27 +202,34 @@ static int write_tree_level(IndexEntry *entries,
                     break;
                 }
             }
-            if (already) continue;
+            if (already)
+                continue;
+
+            if (seen_count >= 1024)
+                return -1;
 
             strcpy(seen[seen_count++], dirname);
 
             char new_base[512];
-            snprintf(new_base, sizeof(new_base),
-                     "%s%s/", base, dirname);
+            snprintf(new_base, sizeof(new_base), "%s%s/", base, dirname);
 
             ObjectID sub_id;
-            if (write_tree_level(entries, count,
-                                 new_base, &sub_id) != 0)
+            if (write_tree_level(entries, count, new_base, &sub_id) != 0)
+                return -1;
+
+            if (tree.count >= MAX_TREE_ENTRIES)
                 return -1;
 
             TreeEntry *te = &tree.entries[tree.count++];
+
             te->mode = MODE_DIR;
-            strcpy(te->name, dirname);
+
+            strncpy(te->name, dirname, sizeof(te->name) - 1);
+            te->name[sizeof(te->name) - 1] = '\0';
+
             te->hash = sub_id;
         }
     }
-
-    printf("Writing tree with %d entries\n", tree.count);
 
     void *data = NULL;
     size_t len = 0;
@@ -224,7 +246,7 @@ static int write_tree_level(IndexEntry *entries,
     return 0;
 }
 
-// ─── ENTRY POINT ────────────────────────────────────────────────────────────
+// ─── ENTRY POINT ────────────────────────────────────────────
 
 int tree_from_index(ObjectID *id_out) {
     if (!id_out) return -1;
@@ -233,8 +255,6 @@ int tree_from_index(ObjectID *id_out) {
 
     if (index_load(&index) != 0)
         return -1;
-
-    printf("Index count: %zu\n", index.count);
 
     // ✅ HANDLE EMPTY INDEX
     if (index.count == 0) {
@@ -252,8 +272,6 @@ int tree_from_index(ObjectID *id_out) {
         }
 
         free(data);
-
-        printf("Wrote empty tree\n");
         return 0;
     }
 
