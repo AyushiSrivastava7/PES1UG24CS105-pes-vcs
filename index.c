@@ -24,6 +24,7 @@
 #include <unistd.h>
 #include <dirent.h>
 #include <inttypes.h>
+#include "object.h"
 
 // ─── PROVIDED ────────────────────────────────────────────────────────────────
 
