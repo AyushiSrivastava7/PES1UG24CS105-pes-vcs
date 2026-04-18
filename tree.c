@@ -9,7 +9,7 @@
 
 // external API
 int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out);
-int tree_serialize(const Tree *tree, void **data_out, size_t *len_out);
+
 
 // ─── MODE CONSTANTS ─────────────────────
 #define MODE_FILE  0100644
@@ -102,6 +102,42 @@ static ObjectID build_tree_level(Index *idx, const char *prefix) {
 // ─────────────────────────────────────────
 // PUBLIC API
 // ─────────────────────────────────────────
+
+int tree_serialize(const Tree *tree, void **data_out, size_t *len_out) {
+
+    if (!tree || !data_out || !len_out)
+        return -1;
+
+    size_t cap = 4096;
+    char *buf = malloc(cap);
+    if (!buf) return -1;
+
+    buf[0] = '\0';
+
+    for (int i = 0; i < tree->count; i++) {
+
+        char line[256];
+
+        snprintf(line, sizeof(line),
+                 "%o %s\n",
+                 tree->entries[i].mode,
+                 tree->entries[i].name);
+
+        size_t need = strlen(buf) + strlen(line) + 1;
+
+        if (need > cap) {
+            while (cap < need) cap *= 2;
+            buf = realloc(buf, cap);
+        }
+
+        strcat(buf, line);
+    }
+
+    *data_out = buf;
+    *len_out = strlen(buf);
+
+    return 0;
+}
 int tree_from_index(ObjectID *id_out) {
 
     Index idx;
