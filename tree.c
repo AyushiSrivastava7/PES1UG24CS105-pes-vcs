@@ -28,16 +28,18 @@ static ObjectID build_tree_level(Index *idx, const char *prefix) {
     Tree tree;
     tree.count = 0;
 
+    size_t prefix_len = prefix ? strlen(prefix) : 0;
+
     for (int i = 0; i < idx->count; i++) {
 
         char *path = idx->entries[i].path;
 
-        if (prefix && strlen(prefix) > 0) {
-            if (strncmp(path, prefix, strlen(prefix)) != 0)
+        if (prefix_len > 0) {
+            if (strncmp(path, prefix, prefix_len) != 0)
                 continue;
         }
 
-        char *rest = path + (prefix ? strlen(prefix) : 0);
+        char *rest = path + prefix_len;
 
         if (strchr(rest, '/')) {
 
@@ -55,11 +57,8 @@ static ObjectID build_tree_level(Index *idx, const char *prefix) {
             if (!exists) {
 
                 char new_prefix[512];
-
-                if (prefix)
-                    snprintf(new_prefix, sizeof(new_prefix), "%s%s/", prefix, dir);
-                else
-                    snprintf(new_prefix, sizeof(new_prefix), "%s/", dir);
+                snprintf(new_prefix, sizeof(new_prefix),
+                         "%s%s/", prefix ? prefix : "", dir);
 
                 ObjectID subid = build_tree_level(idx, new_prefix);
 
@@ -82,6 +81,19 @@ static ObjectID build_tree_level(Index *idx, const char *prefix) {
         }
     }
 
+    // ALWAYS serialize tree (even if empty)
+    void *buf = NULL;
+    size_t len = 0;
+
+    tree_serialize(&tree, &buf, &len);
+
+    ObjectID id;
+    object_write(OBJ_TREE, buf, len, &id);
+
+    free(buf);
+
+    return id;
+}
     // ─── FIX: always create a tree object (NOT raw zero return)
     void *buf;
     size_t len;
