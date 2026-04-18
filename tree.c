@@ -118,9 +118,6 @@ int tree_serialize(const Tree *tree, void **data_out, size_t *len_out) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Build tree from index recursively (BOTTOM-UP)
-
-// Internal recursive builder
 static ObjectID build_tree_level(Index *idx, const char *prefix) {
 
     Tree tree;
@@ -138,7 +135,7 @@ static ObjectID build_tree_level(Index *idx, const char *prefix) {
         char *rest = path + (prefix ? strlen(prefix) : 0);
 
         if (strchr(rest, '/')) {
-            // DIRECTORY CASE
+
             char dir[256];
             sscanf(rest, "%[^/]", dir);
 
@@ -161,7 +158,7 @@ static ObjectID build_tree_level(Index *idx, const char *prefix) {
                 ObjectID subid = build_tree_level(idx, new_prefix);
 
                 TreeEntry e;
-                e.mode = MODE_DIR;
+                e.mode = 0040000;
                 strcpy(e.name, dir);
                 e.hash = subid;
 
@@ -169,7 +166,7 @@ static ObjectID build_tree_level(Index *idx, const char *prefix) {
             }
 
         } else {
-            // FILE CASE
+
             TreeEntry e;
             e.mode = idx->entries[i].mode;
             strcpy(e.name, rest);
@@ -179,7 +176,7 @@ static ObjectID build_tree_level(Index *idx, const char *prefix) {
         }
     }
 
-    // If empty tree, return zero hash safely
+    // serialize tree
     if (tree.count == 0) {
         ObjectID empty = {0};
         return empty;
@@ -187,12 +184,14 @@ static ObjectID build_tree_level(Index *idx, const char *prefix) {
 
     void *buf;
     size_t len;
+
     tree_serialize(&tree, &buf, &len);
 
     ObjectID id;
     object_write(OBJ_TREE, buf, len, &id);
 
     free(buf);
+
     return id;
 }
 
@@ -203,14 +202,17 @@ static ObjectID build_tree_level(Index *idx, const char *prefix) {
 int tree_from_index(ObjectID *id_out) {
 
     Index idx;
-    if (index_load(&idx) != 0) return -1;
+    index_load(&idx);
 
-    if (idx.count == 0) return -1;   // nothing staged
+    // empty index → return empty tree safely
+    if (idx.count == 0) {
+        ObjectID empty = {0};
+        *id_out = empty;
+        return 0;
+    }
 
     ObjectID root = build_tree_level(&idx, "");
 
-    if (id_out)
-        *id_out = root;
-
+    *id_out = root;
     return 0;
 }
