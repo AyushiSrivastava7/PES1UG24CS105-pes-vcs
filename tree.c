@@ -175,7 +175,7 @@ static ObjectID build_tree_level(Index *idx, const char *prefix) {
             TreeEntry e;
             e.mode = idx->entries[i].mode;
             strcpy(e.name, rest);
-            e.hash = idx->entries[i].id;
+            e.hash = idx->entries[i].hash;
 
             tree.entries[tree.count++] = e;
         }
@@ -194,7 +194,7 @@ static ObjectID build_tree_level(Index *idx, const char *prefix) {
 }
 
 // ─── TODO IMPLEMENTATION ───────────────────────────────────────────────────
-
+int object_write(ObjectType type, const void *data, size_t len, ObjectID *out);
 int tree_from_index(ObjectID *id_out) {
 
     Index idx;
