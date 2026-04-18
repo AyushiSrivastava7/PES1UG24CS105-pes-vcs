@@ -196,6 +196,85 @@ int head_update(const ObjectID *new_commit) {
 int commit_create(const char *message, ObjectID *commit_id_out) {
     // TODO: Implement commit creation
     // (See Lab Appendix for logical steps)
-    (void)message; (void)commit_id_out;
-    return -1;
+    // ─────────────────────────────────────────────
+    // 1. Build tree from staging index
+    // ─────────────────────────────────────────────
+    Commit commit;
+    memset(&commit, 0, sizeof(Commit));
+
+    ObjectID tree_id;
+    if (tree_from_index(&tree_id) != 0) {
+        fprintf(stderr, "Error: failed to build tree from index\n");
+        return -1;
+    }
+    commit.tree = tree_id;
+
+    // ─────────────────────────────────────────────
+    // 2. Read parent commit from HEAD (if exists)
+    // ─────────────────────────────────────────────
+    ObjectID parent_id;
+    if (head_read(&parent_id) == 0) {
+        commit.parent = parent_id;
+        commit.has_parent = 1;
+    } else {
+        // first commit case
+        commit.has_parent = 0;
+    }
+
+    // ─────────────────────────────────────────────
+    // 3. Fill metadata (author + timestamp)
+    // ─────────────────────────────────────────────
+    const char *author = pes_author();
+    if (!author) {
+        fprintf(stderr, "Error: missing author\n");
+        return -1;
+    }
+
+    snprintf(commit.author, sizeof(commit.author), "%s", author);
+    commit.timestamp = (uint64_t)time(NULL);
+
+    // ─────────────────────────────────────────────
+    // 4. Set commit message
+    // ─────────────────────────────────────────────
+    snprintf(commit.message, sizeof(commit.message), "%s", message);
+
+    // ─────────────────────────────────────────────
+    // 5. Serialize commit object
+    // ─────────────────────────────────────────────
+    void *data = NULL;
+    size_t len = 0;
+
+    if (commit_serialize(&commit, &data, &len) != 0) {
+        fprintf(stderr, "Error: commit serialization failed\n");
+        return -1;
+    }
+
+    // ─────────────────────────────────────────────
+    // 6. Write commit object to object store
+    // ─────────────────────────────────────────────
+    ObjectID new_commit_id;
+    if (object_write(OBJ_COMMIT, data, len, &new_commit_id) != 0) {
+        fprintf(stderr, "Error: failed to write commit object\n");
+        free(data);
+        return -1;
+    }
+
+    free(data);
+
+    // ─────────────────────────────────────────────
+    // 7. Update HEAD to new commit
+    // ─────────────────────────────────────────────
+    if (head_update(&new_commit_id) != 0) {
+        fprintf(stderr, "Error: failed to update HEAD\n");
+        return -1;
+    }
+
+    // ─────────────────────────────────────────────
+    // 8. Return commit hash
+    // ─────────────────────────────────────────────
+    if (commit_id_out) {
+        *commit_id_out = new_commit_id;
+    }
+
+    return 0;
 }
