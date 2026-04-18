@@ -105,6 +105,48 @@ int commit_create(const char *message, ObjectID *commit_id_out) {
     if (commit_id_out) {
         *commit_id_out = new_id;
     }
+    printf("1\n");
+if (tree_from_index(&c.tree) != 0) {
+    printf("FAILED: tree_from_index\n");
+    return -1;
+}
+
+printf("2\n");
+ObjectID parent;
+if (head_read(&parent) != 0) {
+    printf("FAILED: head_read\n");
+    return -1;
+}
+
+printf("3\n");
+const char *author = pes_author();
+if (!author) {
+    printf("FAILED: pes_author\n");
+    return -1;
+}
+
+printf("4\n");
+void *data = NULL;
+size_t len = 0;
+if (commit_serialize(&c, &data, &len) != 0) {
+    printf("FAILED: serialize\n");
+    return -1;
+}
+
+printf("5\n");
+ObjectID new_id;
+if (object_write(OBJ_COMMIT, data, len, &new_id) != 0) {
+    printf("FAILED: object_write\n");
+    return -1;
+}
+
+printf("6\n");
+if (head_update(&new_id) != 0) {
+    printf("FAILED: head_update\n");
+    return -1;
+}
+
+printf("SUCCESS\n");
 
     return 0;
 }
