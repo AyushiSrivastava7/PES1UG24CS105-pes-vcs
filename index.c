@@ -10,7 +10,7 @@
 int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out);
 
 // ───────────────────────────────
-// FIND ENTRY (FIXED MISSING SYMBOL)
+// FIND ENTRY
 // ───────────────────────────────
 IndexEntry *index_find(Index *index, const char *path) {
     for (int i = 0; i < index->count; i++) {
@@ -24,20 +24,7 @@ IndexEntry *index_find(Index *index, const char *path) {
 // ───────────────────────────────
 // LOAD INDEX
 // ───────────────────────────────
-
-int index_status(void) {
-    FILE *f = fopen(INDEX_FILE, "r");
-    if (!f) return 0;
-
-    fseek(f, 0, SEEK_END);
-    long size = ftell(f);
-    fclose(f);
-
-    return (size > 0);
-}
-
 int index_load(Index *index) {
-
     FILE *f = fopen(INDEX_FILE, "r");
     index->count = 0;
 
@@ -96,6 +83,20 @@ int index_save(const Index *index) {
 }
 
 // ───────────────────────────────
+// INDEX STATUS (FIXED MISSING SYMBOL)
+// ───────────────────────────────
+int index_status(void) {
+    FILE *f = fopen(INDEX_FILE, "r");
+    if (!f) return 0;
+
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fclose(f);
+
+    return (size > 0);
+}
+
+// ───────────────────────────────
 // ADD FILE
 // ───────────────────────────────
 int index_add(Index *index, const char *path) {
@@ -112,18 +113,23 @@ int index_add(Index *index, const char *path) {
         return -1;
     }
 
-    fseek(f, 0, SEEK_END);
-    size_t size = ftell(f);
-    fseek(f, 0, SEEK_SET);
+    size_t size = (size_t)st.st_size;
 
-    void *buf = malloc(size ? size : 1);
+    if (size == 0) size = 1;
+
+    void *buf = malloc(size);
     if (!buf) {
         fclose(f);
         return -1;
     }
 
-    fread(buf, 1, size, f);
+    size_t read_bytes = fread(buf, 1, size, f);
     fclose(f);
+
+    if (read_bytes != size && st.st_size != 0) {
+        free(buf);
+        return -1;
+    }
 
     ObjectID id;
     if (object_write(OBJ_BLOB, buf, size, &id) != 0) {
@@ -142,7 +148,8 @@ int index_add(Index *index, const char *path) {
         e = &index->entries[index->count++];
     }
 
-    e->mode = st.st_mode;
+    // store metadata
+    e->mode = st.st_mode & 0777;
     e->hash = id;
     e->mtime_sec = st.st_mtime;
     e->size = st.st_size;
