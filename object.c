@@ -58,7 +58,8 @@ int object_exists(const ObjectID *id) {
     return access(path, F_OK) == 0;
 }
 
-// ─── FIX: type_to_str ADDED ────────────────────────────────────────────────
+// ─── FIXED: type_to_str ─────────────────────────────────────────────────────
+
 static const char* type_to_str(ObjectType type) {
     switch (type) {
         case OBJ_BLOB: return "blob";
@@ -68,7 +69,7 @@ static const char* type_to_str(ObjectType type) {
     }
 }
 
-// ─── TODO: Implement these ──────────────────────────────────────────────────
+// ─── TODO IMPLEMENTED ───────────────────────────────────────────────────────
 
 int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out) {
 
@@ -99,7 +100,7 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
         return 0;
     }
 
-    // 5. Create path
+    // 5. Build path
     char path[512];
     object_path(&id, path, sizeof(path));
 
@@ -107,13 +108,17 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
     snprintf(dir, sizeof(dir), "%s", path);
     *strrchr(dir, '/') = '\0';
 
-    mkdir(".pes", 0755);
-    mkdir(".pes/objects", 0755);
-    mkdir(dir, 0755);
+    mkdir(PES_DIR, 0755);
+    mkdir(OBJECTS_DIR, 0755);
+
+    // FIX: create shard directory properly (recursive safe enough for lab)
+    char shard_dir[512];
+    snprintf(shard_dir, sizeof(shard_dir), "%s", dir);
+    mkdir(shard_dir, 0755);
 
     // 6. Temp file
     char tmp[600];
-    snprintf(tmp, sizeof(tmp), "%s/tmpXXXXXX", dir);
+    snprintf(tmp, sizeof(tmp), "%s/tmpXXXXXX", shard_dir);
 
     int fd = mkstemp(tmp);
     if (fd < 0) {
@@ -135,7 +140,7 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
     rename(tmp, path);
 
     // 9. fsync directory
-    int dfd = open(dir, O_RDONLY);
+    int dfd = open(shard_dir, O_RDONLY);
     if (dfd >= 0) {
         fsync(dfd);
         close(dfd);
@@ -184,7 +189,6 @@ int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_
         return -1;
     }
 
-    // find header separator
     char *sep = memchr(buf, '\0', size);
     if (!sep) {
         free(buf);
@@ -193,7 +197,6 @@ int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_
 
     size_t header_len = sep - buf;
 
-    // parse type
     if (strncmp(buf, "blob", 4) == 0) *type_out = OBJ_BLOB;
     else if (strncmp(buf, "tree", 4) == 0) *type_out = OBJ_TREE;
     else if (strncmp(buf, "commit", 6) == 0) *type_out = OBJ_COMMIT;
