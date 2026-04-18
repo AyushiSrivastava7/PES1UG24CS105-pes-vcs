@@ -104,7 +104,8 @@ int tree_serialize(const Tree *tree, void **data_out, size_t *len_out) {
         
         // Write mode and name (%o writes octal correctly for Git standards)
         int written = sprintf((char *)buffer + offset, "%o %s", entry->mode, entry->name);
-        offset += written + 1; // +1 to step over the null terminator written by sprintf
+        offset += written;
+        buffer[offset++] = '\0';// +1 to step over the null terminator written by sprintf
         
         // Write binary hash
         memcpy(buffer + offset, entry->hash.hash, HASH_SIZE);
