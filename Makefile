@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -Wall -Wextra -O2
 LDFLAGS = -lcrypto
 
-# ─── Main binary ────────────────────────────────────────────────────────────-
+# ─── Main binary ─────────────────────────────────────────────────────────────
 
 SRCS = object.c tree.c index.c commit.c pes.c
 OBJS = $(SRCS:.c=.o)
@@ -15,10 +15,10 @@ pes: $(OBJS)
 
 # ─── Test binaries ───────────────────────────────────────────────────────────
 
-test_objects: test_objects.o object.o index.o
+test_objects: test_objects.o object.o
 	$(CC) -o $@ $^ $(LDFLAGS)
 
-test_tree: test_tree.o object.o tree.o 
+test_tree: test_tree.o object.o tree.o
 	$(CC) -o $@ $^ $(LDFLAGS)
 
 # ─── Convenience targets ────────────────────────────────────────────────────
@@ -35,6 +35,14 @@ test: test-unit test-integration
 
 test-unit: test_objects test_tree
 	@echo "=== Running Phase 1 tests ==="
+	./test_objects
+	@echo ""
+	@echo "=== Running Phase 2 tests ==="
+	./test_tree
+
+test-integration: pes
+	@echo "=== Running integration tests ==="
+	bash test_sequence.sh	@echo "=== Running Phase 1 tests ==="
 	./test_objects
 	@echo ""
 	@echo "=== Running Phase 2 tests ==="
