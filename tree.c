@@ -131,17 +131,92 @@ int tree_serialize(const Tree *tree, void **data_out, size_t *len_out) {
 //
 // Returns 0 on success, -1 on error.
 
+
 static int write_tree_level(IndexEntry *entries,
                             size_t count,
                             const char *base,
-                            ObjectID *out_id);
+                            ObjectID *out_id)
+{
+    Tree tree = {0};
 
-// ─────────────────────────────────────────────────────────────
-// FIXED tree_from_index (NO Index TYPE USED)
-// ─────────────────────────────────────────────────────────────
+    // Track directories already processed
+    char seen[1024][256];
+    size_t seen_count = 0;
+
+    for (size_t i = 0; i < count; i++) {
+        const char *path = entries[i].path;
+
+        if (!starts_with(path, base))
+            continue;
+
+        const char *rest = skip_base(path, base);
+
+        if (*rest == '\0')
+            continue;
+
+        const char *slash = strchr(rest, '/');
+
+        if (!slash) {
+            // FILE
+            TreeEntry *te = &tree.entries[tree.count++];
+
+            te->mode = entries[i].mode;
+            strcpy(te->name, rest);
+            te->hash = entries[i].id;
+        } else {
+            // DIRECTORY
+            size_t dir_len = slash - rest;
+
+            char dirname[256];
+            strncpy(dirname, rest, dir_len);
+            dirname[dir_len] = '\0';
+
+            // Check if already processed
+            int already = 0;
+            for (size_t j = 0; j < seen_count; j++) {
+                if (strcmp(seen[j], dirname) == 0) {
+                    already = 1;
+                    break;
+                }
+            }
+            if (already) continue;
+
+            strcpy(seen[seen_count++], dirname);
+
+            char new_base[512];
+            snprintf(new_base, sizeof(new_base),
+                     "%s%s/", base, dirname);
+
+            ObjectID sub_id;
+            if (write_tree_level(entries, count,
+                                 new_base, &sub_id) != 0)
+                return -1;
+
+            TreeEntry *te = &tree.entries[tree.count++];
+            te->mode = MODE_DIR;
+            strcpy(te->name, dirname);
+            te->hash = sub_id;
+        }
+    }
+
+    void *data = NULL;
+    size_t len = 0;
+
+    if (tree_serialize(&tree, &data, &len) != 0)
+        return -1;
+
+    if (object_write("tree", data, len, out_id) != 0) {
+        free(data);
+        return -1;
+    }
+
+    free(data);
+    return 0;
+}
+
+// ─── ENTRY POINT ────────────────────────────────────────────────────────────
+
 int tree_from_index(ObjectID *id_out) {
-    // TODO: Implement recursive tree building
-    // (See Lab Appendix for logical steps)
     if (!id_out) return -1;
 
     Index index;
