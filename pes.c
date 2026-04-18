@@ -77,7 +77,7 @@ void cmd_status(void) {
         fprintf(stderr, "error: failed to load index\n");
         return;
     }
-    index_status(&index);
+    index_status();
 }
 
 // Usage: pes commit -m <message>
