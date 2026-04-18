@@ -23,6 +23,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <dirent.h>
+#include <inttypes.h>
 
 // ─── PROVIDED ────────────────────────────────────────────────────────────────
 
@@ -151,12 +152,12 @@ int index_load(Index *index) {
 
         char hash_hex[65];
 
-        int ret = fscanf(f, "%o %64s %ld %ld %255s\n",
-                         &e->mode,
-                         hash_hex,
-                         &e->mtime_sec,
-                         &e->size,
-                         e->path);
+int ret = fscanf(f, "%o %64s %ld %" SCNu32 " %255s\n",
+                 &e->mode,
+                 hash_hex,
+                 &e->mtime_sec,
+                 &e->size,
+                 e->path);
 
         if (ret == EOF) break;
         if (ret != 5) {
