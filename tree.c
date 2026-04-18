@@ -7,23 +7,18 @@
 #include <dirent.h>
 #include <sys/stat.h>
 
-// 🔥 FIX: add this (CRITICAL)
+// external API
 int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out);
 int tree_serialize(const Tree *tree, void **data_out, size_t *len_out);
 
-// ─── Mode Constants ─────────────────────────────────────────────────────────
-
+// ─── MODE CONSTANTS ─────────────────────
 #define MODE_FILE  0100644
 #define MODE_EXEC  0100755
 #define MODE_DIR   0040000
 
-// ─── PROVIDED FUNCTIONS (UNCHANGED) ─────────────────────────────────────────
-// (keep your existing get_file_mode, tree_parse, tree_serialize exactly as-is)
-
-// ─────────────────────────────────────────────────────────────────────────────
-// BUILD TREE RECURSIVELY
-// ─────────────────────────────────────────────────────────────────────────────
-
+// ─────────────────────────────────────────
+// BUILD TREE LEVEL
+// ─────────────────────────────────────────
 static ObjectID build_tree_level(Index *idx, const char *prefix) {
 
     Tree tree;
@@ -35,10 +30,9 @@ static ObjectID build_tree_level(Index *idx, const char *prefix) {
 
         char *path = idx->entries[i].path;
 
-        if (prefix_len > 0) {
-            if (strncmp(path, prefix, prefix_len) != 0)
-                continue;
-        }
+        if (prefix_len > 0 &&
+            strncmp(path, prefix, prefix_len) != 0)
+            continue;
 
         char *rest = path + prefix_len;
 
@@ -82,7 +76,7 @@ static ObjectID build_tree_level(Index *idx, const char *prefix) {
         }
     }
 
-    // ALWAYS serialize tree (even if empty)
+    // serialize tree
     void *buf = NULL;
     size_t len = 0;
 
@@ -95,34 +89,10 @@ static ObjectID build_tree_level(Index *idx, const char *prefix) {
 
     return id;
 }
-    // ─── FIX: always create a tree object (NOT raw zero return)
-    void *buf;
-    size_t len;
 
-    if (tree.count == 0) {
-        tree_serialize(&tree, &buf, &len);
-
-        ObjectID id;
-        object_write(OBJ_TREE, buf, len, &id);
-
-        free(buf);
-        return id;
-    }
-
-    tree_serialize(&tree, &buf, &len);
-
-    ObjectID id;
-    object_write(OBJ_TREE, buf, len, &id);
-
-    free(buf);
-
-    return id;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────
 // PUBLIC API
-// ─────────────────────────────────────────────────────────────────────────────
-
+// ─────────────────────────────────────────
 int tree_from_index(ObjectID *id_out) {
 
     Index idx;
