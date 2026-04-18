@@ -149,7 +149,6 @@ static int write_tree_level(IndexEntry *entries,
 {
     Tree tree = {0};
 
-    // Track directories already processed
     char seen[1024][256];
     size_t seen_count = 0;
 
@@ -167,21 +166,18 @@ static int write_tree_level(IndexEntry *entries,
         const char *slash = strchr(rest, '/');
 
         if (!slash) {
-            // FILE
             TreeEntry *te = &tree.entries[tree.count++];
 
             te->mode = entries[i].mode;
             strcpy(te->name, rest);
             te->hash = entries[i].hash;
         } else {
-            // DIRECTORY
             size_t dir_len = slash - rest;
 
             char dirname[256];
             strncpy(dirname, rest, dir_len);
             dirname[dir_len] = '\0';
 
-            // Check if already processed
             int already = 0;
             for (size_t j = 0; j < seen_count; j++) {
                 if (strcmp(seen[j], dirname) == 0) {
@@ -209,6 +205,8 @@ static int write_tree_level(IndexEntry *entries,
         }
     }
 
+    printf("Writing tree with %d entries\n", tree.count);
+
     void *data = NULL;
     size_t len = 0;
 
@@ -233,6 +231,29 @@ int tree_from_index(ObjectID *id_out) {
 
     if (index_load(&index) != 0)
         return -1;
+
+    printf("Index count: %zu\n", index.count);
+
+    // ✅ HANDLE EMPTY INDEX
+    if (index.count == 0) {
+        Tree empty = {0};
+
+        void *data = NULL;
+        size_t len = 0;
+
+        if (tree_serialize(&empty, &data, &len) != 0)
+            return -1;
+
+        if (object_write("tree", data, len, id_out) != 0) {
+            free(data);
+            return -1;
+        }
+
+        free(data);
+
+        printf("Wrote empty tree\n");
+        return 0;
+    }
 
     return write_tree_level(index.entries,
                             index.count,
