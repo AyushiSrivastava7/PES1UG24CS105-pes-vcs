@@ -34,12 +34,13 @@ static ObjectID build_tree_level(Index *idx, const char *prefix) {
             strncmp(path, prefix, prefix_len) != 0)
             continue;
 
-        char *rest = path + prefix_len;
+        const char *rest = path + prefix_len;
 
+        // ─── DIRECTORY CASE ───
         if (strchr(rest, '/')) {
 
-            char dir[256];
-            sscanf(rest, "%[^/]", dir);
+            char dir[256] = {0};
+            sscanf(rest, "%255[^/]", dir);
 
             int exists = 0;
             for (int j = 0; j < tree.count; j++) {
@@ -59,34 +60,42 @@ static ObjectID build_tree_level(Index *idx, const char *prefix) {
 
                 TreeEntry e;
                 e.mode = MODE_DIR;
-                strcpy(e.name, dir);
+                strncpy(e.name, dir, sizeof(e.name) - 1);
+                e.name[sizeof(e.name) - 1] = '\0';
                 e.hash = subid;
 
                 tree.entries[tree.count++] = e;
             }
 
-        } else {
+        }
+        // ─── FILE CASE ───
+        else {
 
             TreeEntry e;
             e.mode = idx->entries[i].mode;
-            strcpy(e.name, rest);
+            strncpy(e.name, rest, sizeof(e.name) - 1);
+            e.name[sizeof(e.name) - 1] = '\0';
             e.hash = idx->entries[i].hash;
 
             tree.entries[tree.count++] = e;
         }
     }
 
-    // serialize tree
+    // ─── SERIALIZE TREE ───
     void *buf = NULL;
     size_t len = 0;
 
-    tree_serialize(&tree, &buf, &len);
+    if (tree_serialize(&tree, &buf, &len) != 0 || !buf) {
+        return (ObjectID){0};  // safe fail
+    }
 
     ObjectID id;
-    object_write(OBJ_TREE, buf, len, &id);
+    if (object_write(OBJ_TREE, buf, len, &id) != 0) {
+        free(buf);
+        return (ObjectID){0};
+    }
 
     free(buf);
-
     return id;
 }
 
