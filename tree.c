@@ -216,7 +216,7 @@ static int write_tree_level(IndexEntry *entries,
     if (tree_serialize(&tree, &data, &len) != 0)
         return -1;
 
-    if (object_write("tree", data, len, (char *)out_id->hash) != 0) {
+    if object_write("tree", data, len, out_id->hash.hash)
         free(data);
         return -1;
     }
