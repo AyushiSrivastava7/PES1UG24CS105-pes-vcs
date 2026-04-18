@@ -24,6 +24,7 @@
 #include <unistd.h>
 #include <dirent.h>
 #include <inttypes.h>
+#include "object.h"
 
 // ─── PROVIDED ────────────────────────────────────────────────────────────────
 
@@ -260,7 +261,11 @@ int index_add(Index *index, const char *path) {
         e = &index->entries[index->count++];
     }
 
-    e->mode = st.st_mode;
+    if (st.st_mode & S_IXUSR)
+        e->mode = 0100755;
+    else
+        e->mode = 0100644;
+    
     e->size = st.st_size;
     e->mtime_sec = st.st_mtime;
     strcpy(e->path, path);
