@@ -16,7 +16,7 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include "index.h"
-#include "object.h"
+
 
 // ─── Mode Constants ─────────────────────────────────────────────────────────
 
@@ -25,7 +25,7 @@
 #define MODE_DIR       0040000
 
 // ─── PROVIDED ───────────────────────────────────────────────────────────────
-
+int object_write(const char *type, const void *data, size_t len, char *out_id);
 // Determine the object mode for a filesystem path.
 uint32_t get_file_mode(const char *path) {
     struct stat st;
