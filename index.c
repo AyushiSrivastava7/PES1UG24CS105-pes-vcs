@@ -123,11 +123,12 @@ int index_status(const Index *index) {
 
 // Load index from disk
 int index_load(Index *index) {
+
     FILE *f = fopen(INDEX_FILE, "r");
 
     index->count = 0;
 
-    if (!f) return 0; // empty index is valid
+    if (!f) return 0;
 
     char line[1024];
 
@@ -150,6 +151,10 @@ int index_load(Index *index) {
         hex_to_hash(hash_hex, &e->hash);
         index->count++;
     }
+
+    fclose(f);
+    return 0;
+}
 
     fclose(f);
     return 0;
