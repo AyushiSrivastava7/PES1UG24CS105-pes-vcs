@@ -25,6 +25,7 @@
 #include <dirent.h>
 #include <inttypes.h>
 #include "object.h"
+#include <time.h>
 
 // ─── PROVIDED ────────────────────────────────────────────────────────────────
 
