@@ -148,24 +148,24 @@ static int write_tree_level(IndexEntry *entries,
     char seen[1024][256];
     size_t seen_count = 0;
 
+    size_t base_len = strlen(base);
+
     for (size_t i = 0; i < count; i++) {
 
         const char *path = entries[i].path;
 
-        if (!starts_with(path, base))
+        if (strncmp(path, base, base_len) != 0)
             continue;
 
-        const char *rest = skip_base(path, base);
+        const char *rest = path + base_len;
 
         if (*rest == '\0')
             continue;
 
         const char *slash = strchr(rest, '/');
 
-        // ── FILE ─────────────────────────────
+        // ───── FILE ─────
         if (!slash) {
-
-            if (tree.count >= MAX_TREE_ENTRIES) return -1;
 
             TreeEntry *te = &tree.entries[tree.count++];
 
@@ -174,7 +174,7 @@ static int write_tree_level(IndexEntry *entries,
             te->hash = entries[i].hash;
         }
 
-        // ── DIRECTORY ────────────────────────
+        // ───── DIRECTORY ─────
         else {
 
             size_t dir_len = slash - rest;
@@ -183,6 +183,7 @@ static int write_tree_level(IndexEntry *entries,
             strncpy(dirname, rest, dir_len);
             dirname[dir_len] = '\0';
 
+            // avoid duplicates
             int already = 0;
             for (size_t j = 0; j < seen_count; j++) {
                 if (strcmp(seen[j], dirname) == 0) {
@@ -190,7 +191,6 @@ static int write_tree_level(IndexEntry *entries,
                     break;
                 }
             }
-
             if (already) continue;
 
             strcpy(seen[seen_count++], dirname);
@@ -202,13 +202,7 @@ static int write_tree_level(IndexEntry *entries,
 
             ObjectID sub_id;
 
-            if (write_tree_level(entries,
-                                 count,
-                                 new_base,
-                                 &sub_id) != 0)
-                return -1;
-
-            if (tree.count >= MAX_TREE_ENTRIES)
+            if (write_tree_level(entries, count, new_base, &sub_id) != 0)
                 return -1;
 
             TreeEntry *te = &tree.entries[tree.count++];
@@ -225,7 +219,6 @@ static int write_tree_level(IndexEntry *entries,
     if (tree_serialize(&tree, &data, &len) != 0)
         return -1;
 
-    // FIXED SYNTAX ERROR
     if (object_write("tree", data, len, out_id->hash.hash) != 0) {
         free(data);
         return -1;
@@ -237,7 +230,8 @@ static int write_tree_level(IndexEntry *entries,
 
 // ─── ENTRY POINT ───────────────────────────────────────────
 
-int tree_from_index(ObjectID *id_out) {
+int tree_from_index(ObjectID *id_out)
+{
     if (!id_out) return -1;
 
     Index index;
@@ -249,7 +243,7 @@ int tree_from_index(ObjectID *id_out) {
                             index.count,
                             "",
                             id_out);
-}}
+}
 
 // Parse binary tree data into a Tree struct safely.
 // Returns 0 on success, -1 on parse error.
