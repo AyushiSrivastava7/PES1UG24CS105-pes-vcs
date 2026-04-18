@@ -9,6 +9,7 @@
 
 // 🔥 FIX: add this (CRITICAL)
 int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out);
+int tree_serialize(const Tree *tree, void **data_out, size_t *len_out);
 
 // ─── Mode Constants ─────────────────────────────────────────────────────────
 
