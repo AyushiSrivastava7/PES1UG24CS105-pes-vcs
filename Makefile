@@ -6,7 +6,7 @@ SRCS = object.c tree.c index.c commit.c pes.c
 OBJS = $(SRCS:.c=.o)
 
 pes: $(OBJS)
-	$(CC) -o $@ $^ $(LDFLAGS)
+	$(CC) -o pes $(OBJS) $(LDFLAGS)
 
 %.o: %.c pes.h index.h tree.h
 	$(CC) $(CFLAGS) -c $< -o $@
