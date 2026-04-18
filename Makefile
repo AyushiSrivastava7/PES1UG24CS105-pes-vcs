@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -Wall -Wextra -O2
 LDFLAGS = -lcrypto
 
-# ─── Main binary ─────────────────────────────────────────────────────────────
+# ─── Main binary ────────────────────────────────────────────────────────────-
 
 SRCS = object.c tree.c index.c commit.c pes.c
 OBJS = $(SRCS:.c=.o)
