@@ -24,6 +24,18 @@ IndexEntry *index_find(Index *index, const char *path) {
 // ───────────────────────────────
 // LOAD INDEX
 // ───────────────────────────────
+
+int index_status(void) {
+    FILE *f = fopen(INDEX_FILE, "r");
+    if (!f) return 0;
+
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fclose(f);
+
+    return (size > 0);
+}
+
 int index_load(Index *index) {
 
     FILE *f = fopen(INDEX_FILE, "r");
