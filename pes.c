@@ -15,21 +15,34 @@
 
 // Usage: pes init
 void cmd_init(void) {
+
+    // create base directory
     if (mkdir(PES_DIR, 0755) != 0 && access(PES_DIR, F_OK) != 0) {
         fprintf(stderr, "error: failed to create %s\n", PES_DIR);
         return;
     }
+
     mkdir(OBJECTS_DIR, 0755);
     mkdir(".pes/refs", 0755);
     mkdir(REFS_DIR, 0755);
 
-    if (access(HEAD_FILE, F_OK) != 0) {
-        FILE *f = fopen(HEAD_FILE, "w");
-        if (f) {
-            fprintf(f, "ref: refs/heads/main\n");
-            fclose(f);
-        }
+    // ─── FIX 1: create HEAD ─────────────────────────────
+    FILE *f = fopen(HEAD_FILE, "w");
+    if (f) {
+        fprintf(f, "ref: refs/heads/main\n");
+        fclose(f);
     }
+
+    // ─── FIX 2: create main branch ref ───────────────────
+    char main_ref[256];
+    snprintf(main_ref, sizeof(main_ref), "%s/main", REFS_DIR);
+
+    f = fopen(main_ref, "w");
+    if (f) fclose(f);
+
+    // ─── FIX 3: create empty index file ──────────────────
+    FILE *idx = fopen(INDEX_FILE, "w");
+    if (idx) fclose(idx);
 
     printf("Initialized empty PES repository in %s/\n", PES_DIR);
 }
