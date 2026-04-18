@@ -49,5 +49,63 @@ int head_read(ObjectID *id_out);
 // Update HEAD (or the branch it points to) to a new commit hash.
 // Must use atomic write (temp file + rename).
 int head_update(const ObjectID *new_commit);
+int commit_create(const char *message, ObjectID *commit_id_out) {
+    if (!message || strlen(message) == 0) return -1;
 
+    Commit c;
+    memset(&c, 0, sizeof(c));
+
+    // ── 1. Build tree from index ─────────────────────────────
+    if (tree_from_index(&c.tree) != 0) {
+        return -1;
+    }
+
+    // ── 2. Read parent commit (HEAD) ─────────────────────────
+    ObjectID parent;
+    if (head_read(&parent) == 0) {
+        c.parent = parent;
+        c.has_parent = 1;
+    } else {
+        c.has_parent = 0;
+    }
+
+    // ── 3. Author + timestamp ────────────────────────────────
+    const char *author = pes_author();
+    if (!author) return -1;
+
+    snprintf(c.author, sizeof(c.author), "%s", author);
+    c.timestamp = (uint64_t)time(NULL);
+
+    // ── 4. Message ────────────────────────────────────────────
+    snprintf(c.message, sizeof(c.message), "%s", message);
+
+    // ── 5. Serialize commit ───────────────────────────────────
+    void *data = NULL;
+    size_t len = 0;
+
+    if (commit_serialize(&c, &data, &len) != 0) {
+        return -1;
+    }
+
+    // ── 6. Write object to store ─────────────────────────────
+    ObjectID new_id;
+    if (object_write(OBJ_COMMIT, data, len, &new_id) != 0) {
+        free(data);
+        return -1;
+    }
+
+    free(data);
+
+    // ── 7. Update HEAD atomically ────────────────────────────
+    if (head_update(&new_id) != 0) {
+        return -1;
+    }
+
+    // ── 8. Return result ─────────────────────────────────────
+    if (commit_id_out) {
+        *commit_id_out = new_id;
+    }
+
+    return 0;
+}
 #endif // COMMIT_H
