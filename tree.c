@@ -11,6 +11,7 @@
 
 #include "tree.h"
 #include "index.h"
+#include "pes.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,7 +26,7 @@
 
 // ─── PROVIDED ─────────────────────────────────────────────────────────────
 
-// (UNCHANGED — your provided functions stay exactly the same)
+// Determine the object mode for a filesystem path.
 uint32_t get_file_mode(const char *path) {
     struct stat st;
     if (lstat(path, &st) != 0) return 0;
@@ -35,6 +36,8 @@ uint32_t get_file_mode(const char *path) {
     return MODE_FILE;
 }
 
+// Parse binary tree data into a Tree struct safely.
+// Returns 0 on success, -1 on parse error.
 int tree_parse(const void *data, size_t len, Tree *tree_out) {
     tree_out->count = 0;
     const uint8_t *ptr = (const uint8_t *)data;
@@ -75,11 +78,15 @@ int tree_parse(const void *data, size_t len, Tree *tree_out) {
     return 0;
 }
 
+// Helper for qsort to ensure consistent tree hashing
 static int compare_tree_entries(const void *a, const void *b) {
     return strcmp(((const TreeEntry *)a)->name,
                   ((const TreeEntry *)b)->name);
 }
 
+// Serialize a Tree struct into binary format for storage.
+// Caller must free(*data_out).
+// Returns 0 on success, -1 on error.
 int tree_serialize(const Tree *tree, void **data_out, size_t *len_out) {
     size_t max_size = tree->count * 296;
     uint8_t *buffer = malloc(max_size);
@@ -90,6 +97,7 @@ int tree_serialize(const Tree *tree, void **data_out, size_t *len_out) {
           sizeof(TreeEntry), compare_tree_entries);
 
     size_t offset = 0;
+
     for (int i = 0; i < sorted_tree.count; i++) {
         const TreeEntry *entry = &sorted_tree.entries[i];
 
@@ -110,28 +118,18 @@ int tree_serialize(const Tree *tree, void **data_out, size_t *len_out) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 🔥 HELPER STRUCT FOR BUILDING TREE
-
-typedef struct PathNode {
-    char name[256];
-    char fullpath[512];
-    int is_dir;
-} PathNode;
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Build tree from index recursively (BOTTOM-UP)
 
+// Internal recursive builder
 static ObjectID build_tree_level(Index *idx, const char *prefix) {
 
     Tree tree;
     tree.count = 0;
 
-    // Iterate index entries
     for (int i = 0; i < idx->count; i++) {
 
         char *path = idx->entries[i].path;
 
-        // Skip entries not in this prefix
         if (prefix && strlen(prefix) > 0) {
             if (strncmp(path, prefix, strlen(prefix)) != 0)
                 continue;
@@ -144,7 +142,6 @@ static ObjectID build_tree_level(Index *idx, const char *prefix) {
             char dir[256];
             sscanf(rest, "%[^/]", dir);
 
-            // Check if already added
             int exists = 0;
             for (int j = 0; j < tree.count; j++) {
                 if (strcmp(tree.entries[j].name, dir) == 0) {
@@ -155,6 +152,7 @@ static ObjectID build_tree_level(Index *idx, const char *prefix) {
 
             if (!exists) {
                 char new_prefix[512];
+
                 if (prefix)
                     snprintf(new_prefix, sizeof(new_prefix), "%s%s/", prefix, dir);
                 else
@@ -181,7 +179,12 @@ static ObjectID build_tree_level(Index *idx, const char *prefix) {
         }
     }
 
-    // Serialize tree
+    // If empty tree, return zero hash safely
+    if (tree.count == 0) {
+        ObjectID empty = {0};
+        return empty;
+    }
+
     void *buf;
     size_t len;
     tree_serialize(&tree, &buf, &len);
@@ -194,11 +197,15 @@ static ObjectID build_tree_level(Index *idx, const char *prefix) {
 }
 
 // ─── TODO IMPLEMENTATION ───────────────────────────────────────────────────
-int object_write(ObjectType type, const void *data, size_t len, ObjectID *out);
+
+// IMPORTANT: object_write is defined in object.c (do NOT redeclare here)
+
 int tree_from_index(ObjectID *id_out) {
 
     Index idx;
     if (index_load(&idx) != 0) return -1;
+
+    if (idx.count == 0) return -1;   // nothing staged
 
     ObjectID root = build_tree_level(&idx, "");
 
