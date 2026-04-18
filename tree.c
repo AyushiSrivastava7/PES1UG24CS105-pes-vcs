@@ -54,9 +54,8 @@ int tree_parse(const void *data, size_t len, Tree *tree_out) {
 
         char mode_str[16] = {0};
         size_t mode_len = space - ptr;
-        if (mode_len >= sizeof(mode_str)) return -1;
-
         memcpy(mode_str, ptr, mode_len);
+
         entry->mode = strtol(mode_str, NULL, 8);
 
         ptr = space + 1;
@@ -65,16 +64,12 @@ int tree_parse(const void *data, size_t len, Tree *tree_out) {
         if (!null_byte) return -1;
 
         size_t name_len = null_byte - ptr;
-        if (name_len >= sizeof(entry->name)) return -1;
-
         memcpy(entry->name, ptr, name_len);
         entry->name[name_len] = '\0';
 
         ptr = null_byte + 1;
 
-        if (ptr + HASH_SIZE > end) return -1;
         memcpy(entry->hash.hash, ptr, HASH_SIZE);
-
         ptr += HASH_SIZE;
 
         tree_out->count++;
@@ -163,7 +158,9 @@ static int write_tree_level(IndexEntry *entries,
             TreeEntry *te = &tree.entries[tree.count++];
 
             te->mode = entries[i].mode;
-            strcpy(te->name, rest);
+            strncpy(te->name, rest, sizeof(te->name) - 1);
+            te->name[sizeof(te->name) - 1] = '\0';
+
             te->hash = entries[i].hash;
         }
 
@@ -183,7 +180,6 @@ static int write_tree_level(IndexEntry *entries,
                     break;
                 }
             }
-
             if (already) continue;
 
             strcpy(seen[seen_count++], dirname);
@@ -201,7 +197,9 @@ static int write_tree_level(IndexEntry *entries,
             TreeEntry *te = &tree.entries[tree.count++];
 
             te->mode = MODE_DIR;
-            strcpy(te->name, dirname);
+            strncpy(te->name, dirname, sizeof(te->name) - 1);
+            te->name[sizeof(te->name) - 1] = '\0';
+
             te->hash = sub_id;
         }
     }
@@ -212,220 +210,7 @@ static int write_tree_level(IndexEntry *entries,
     if (tree_serialize(&tree, &data, &len) != 0)
         return -1;
 
-    // FIXED: correct ObjectID usage (no .hash.hash)
     if (object_write("tree", data, len, (char *)out_id->hash) != 0) {
-        free(data);
-        return -1;
-    }
-
-    free(data);
-    return 0;
-}
-
-// ─────────────────────────────────────────────────────────────
-// ENTRY POINT (USED BY `pes commit`)
-// ─────────────────────────────────────────────────────────────
-
-int tree_from_index(ObjectID *id_out)
-{
-    if (!id_out) return -1;
-
-    Index index;
-
-    if (index_load(&index) != 0)
-        return -1;
-
-    return write_tree_level(index.entries,
-                            index.count,
-                            "",
-                            id_out);
-}}
-
-// ─────────────────────────────────────────────────────────────
-// Tree parsing (USED BY TESTS)
-// ─────────────────────────────────────────────────────────────
-
-int tree_parse(const void *data, size_t len, Tree *tree_out) {
-    tree_out->count = 0;
-
-    const uint8_t *ptr = (const uint8_t *)data;
-    const uint8_t *end = ptr + len;
-
-    while (ptr < end && tree_out->count < MAX_TREE_ENTRIES) {
-        TreeEntry *entry = &tree_out->entries[tree_out->count];
-
-        const uint8_t *space = memchr(ptr, ' ', end - ptr);
-        if (!space) return -1;
-
-        char mode_str[16] = {0};
-        size_t mode_len = space - ptr;
-        if (mode_len >= sizeof(mode_str)) return -1;
-
-        memcpy(mode_str, ptr, mode_len);
-        entry->mode = strtol(mode_str, NULL, 8);
-
-        ptr = space + 1;
-
-        const uint8_t *null_byte = memchr(ptr, '\0', end - ptr);
-        if (!null_byte) return -1;
-
-        size_t name_len = null_byte - ptr;
-        if (name_len >= sizeof(entry->name)) return -1;
-
-        memcpy(entry->name, ptr, name_len);
-        entry->name[name_len] = '\0';
-
-        ptr = null_byte + 1;
-
-        if (ptr + HASH_SIZE > end) return -1;
-        memcpy(entry->hash.hash, ptr, HASH_SIZE);
-
-        ptr += HASH_SIZE;
-
-        tree_out->count++;
-    }
-
-    return 0;
-}
-
-// ─────────────────────────────────────────────────────────────
-// Sort helper (deterministic output)
-// ─────────────────────────────────────────────────────────────
-
-static int compare_tree_entries(const void *a, const void *b) {
-    return strcmp(((const TreeEntry *)a)->name,
-                  ((const TreeEntry *)b)->name);
-}
-
-// ─────────────────────────────────────────────────────────────
-// Tree serialization
-// ─────────────────────────────────────────────────────────────
-
-int tree_serialize(const Tree *tree, void **data_out, size_t *len_out) {
-    size_t max_size = tree->count * 296;
-    uint8_t *buffer = malloc(max_size);
-    if (!buffer) return -1;
-
-    Tree sorted = *tree;
-    qsort(sorted.entries, sorted.count, sizeof(TreeEntry),
-          compare_tree_entries);
-
-    size_t offset = 0;
-
-    for (int i = 0; i < sorted.count; i++) {
-        const TreeEntry *e = &sorted.entries[i];
-
-        int written = sprintf((char *)buffer + offset,
-                              "%o %s",
-                              e->mode,
-                              e->name);
-
-        offset += written + 1;
-
-        memcpy(buffer + offset, e->hash.hash, HASH_SIZE);
-        offset += HASH_SIZE;
-    }
-
-    *data_out = buffer;
-    *len_out = offset;
-    return 0;
-}
-
-// ─────────────────────────────────────────────────────────────
-// Helper: prefix match
-// ─────────────────────────────────────────────────────────────
-
-static int starts_with(const char *path, const char *base) {
-    return strncmp(path, base, strlen(base)) == 0;
-}
-
-static const char *skip_base(const char *path, const char *base) {
-    return path + strlen(base);
-}
-
-// ─────────────────────────────────────────────────────────────
-// Core recursive tree builder
-// ─────────────────────────────────────────────────────────────
-
-static int write_tree_level(IndexEntry *entries,
-                            size_t count,
-                            const char *base,
-                            ObjectID *out_id)
-{
-    Tree tree = {0};
-
-    char seen[1024][256];
-    size_t seen_count = 0;
-
-    size_t base_len = strlen(base);
-
-    for (size_t i = 0; i < count; i++) {
-
-        const char *path = entries[i].path;
-
-        if (strncmp(path, base, base_len) != 0)
-            continue;
-
-        const char *rest = path + base_len;
-
-        if (*rest == '\0')
-            continue;
-
-        const char *slash = strchr(rest, '/');
-
-        // ───── FILE ─────
-        if (!slash) {
-            TreeEntry *te = &tree.entries[tree.count++];
-
-            te->mode = entries[i].mode;
-            strcpy(te->name, rest);
-            te->hash = entries[i].hash;
-        }
-
-        // ───── DIRECTORY ─────
-        else {
-            size_t dir_len = slash - rest;
-
-            char dirname[256];
-            strncpy(dirname, rest, dir_len);
-            dirname[dir_len] = '\0';
-
-            int already = 0;
-            for (size_t j = 0; j < seen_count; j++) {
-                if (strcmp(seen[j], dirname) == 0) {
-                    already = 1;
-                    break;
-                }
-            }
-            if (already) continue;
-
-            strcpy(seen[seen_count++], dirname);
-
-            char new_base[512];
-            snprintf(new_base, sizeof(new_base),
-                     "%s%s/",
-                     base, dirname);
-
-            ObjectID sub_id;
-
-            if (write_tree_level(entries, count, new_base, &sub_id) != 0)
-                return -1;
-
-            TreeEntry *te = &tree.entries[tree.count++];
-
-            te->mode = MODE_DIR;
-            strcpy(te->name, dirname);
-            te->hash = sub_id;
-        }
-    }
-
-    void *data = NULL;
-    size_t len = 0;
-
-    if (tree_serialize(&tree, &data, &len) != 0)
-        return -1;
-
-    if (object_write("tree", data, len, out_id->hash.hash) != 0) {
         free(data);
         return -1;
     }
