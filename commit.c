@@ -252,6 +252,15 @@ int commit_create(const char *message, ObjectID *commit_id_out) {
     if (commit_id_out) {
         *commit_id_out = new_id;
     }
+    printf("DEBUG: before tree_from_index\n");
+
+if (tree_from_index(&c.tree) != 0) {
+    printf("DEBUG: tree_from_index FAILED\n");
+    return -1;
+}
+
+printf("DEBUG: after tree_from_index\n");
 
     return 0;
+    
 }
