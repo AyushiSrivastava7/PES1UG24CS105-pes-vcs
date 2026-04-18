@@ -1,6 +1,5 @@
 #include "index.h"
 #include "pes.h"
-#include "tree.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,8 +9,17 @@
 // external API
 int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out);
 
-// IMPORTANT: must be declared somewhere (tree.h or index.h)
-uint32_t get_file_mode(const char *path);
+// ───────────────────────────────
+// FIND ENTRY (FIXED MISSING SYMBOL)
+// ───────────────────────────────
+IndexEntry *index_find(Index *index, const char *path) {
+    for (int i = 0; i < index->count; i++) {
+        if (strcmp(index->entries[i].path, path) == 0) {
+            return &index->entries[i];
+        }
+    }
+    return NULL;
+}
 
 // ───────────────────────────────
 // LOAD INDEX
@@ -51,7 +59,7 @@ int index_load(Index *index) {
 }
 
 // ───────────────────────────────
-// SAVE INDEX (ATOMIC)
+// SAVE INDEX
 // ───────────────────────────────
 int index_save(const Index *index) {
 
@@ -71,10 +79,7 @@ int index_save(const Index *index) {
                 index->entries[i].path);
     }
 
-    fflush(f);
-    fsync(fileno(f));
     fclose(f);
-
     return 0;
 }
 
@@ -125,7 +130,7 @@ int index_add(Index *index, const char *path) {
         e = &index->entries[index->count++];
     }
 
-    e->mode = get_file_mode(path);
+    e->mode = st.st_mode;
     e->hash = id;
     e->mtime_sec = st.st_mtime;
     e->size = st.st_size;
