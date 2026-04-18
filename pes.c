@@ -26,21 +26,21 @@ void cmd_init(void) {
     mkdir(".pes/refs", 0755);
     mkdir(REFS_DIR, 0755);
 
-    // ─── FIX 1: create HEAD ─────────────────────────────
+    // create HEAD
     FILE *f = fopen(HEAD_FILE, "w");
     if (f) {
         fprintf(f, "ref: refs/heads/main\n");
         fclose(f);
     }
 
-    // ─── FIX 2: create main branch ref ───────────────────
+    // create main branch ref
     char main_ref[256];
     snprintf(main_ref, sizeof(main_ref), "%s/main", REFS_DIR);
 
     f = fopen(main_ref, "w");
     if (f) fclose(f);
 
-    // ─── FIX 3: create empty index file ──────────────────
+    // create empty index file
     FILE *idx = fopen(INDEX_FILE, "w");
     if (idx) fclose(idx);
 
@@ -63,11 +63,12 @@ void cmd_add(int argc, char *argv[]) {
     for (int i = 2; i < argc; i++) {
         if (index_add(&index, argv[i]) != 0) {
             fprintf(stderr, "error: failed to add '%s'\n", argv[i]);
+        }
     }
+
+    // FIXED: must be inside function
+    index_save(&index);
 }
-
-index_save(&index);
-
 
 // Usage: pes status
 void cmd_status(void) {
@@ -88,6 +89,7 @@ void cmd_commit(int argc, char *argv[]) {
 
     const char *message = argv[3];
     ObjectID commit_id;
+
     if (commit_create(message, &commit_id) != 0) {
         fprintf(stderr, "error: commit failed\n");
         return;
@@ -98,11 +100,13 @@ void cmd_commit(int argc, char *argv[]) {
     printf("Committed: %.12s... %s\n", hex, message);
 }
 
-// Callback for commit_walk used by cmd_log.
+// Callback for commit_walk used by cmd_log
 static void print_commit(const ObjectID *id, const Commit *commit, void *ctx) {
     (void)ctx;
+
     char hex[HASH_HEX_SIZE + 1];
     hash_to_hex(id, hex);
+
     printf("commit %s\n", hex);
     printf("Author: %s\n", commit->author);
     printf("Date:   %llu\n", (unsigned long long)commit->timestamp);
