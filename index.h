@@ -51,6 +51,6 @@ IndexEntry* index_find(Index *index, const char *path);
 //
 //   Untracked files:
 //     untracked:  <path>
-int index_status(const Index *index);
+int index_status(void);
 
 #endif // INDEX_H
