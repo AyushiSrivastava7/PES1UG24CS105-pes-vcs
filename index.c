@@ -26,7 +26,6 @@
 
 // ─── PROVIDED ────────────────────────────────────────────────────────────────
 
-// Find an index entry by path (linear scan).
 IndexEntry* index_find(Index *index, const char *path) {
     for (int i = 0; i < index->count; i++) {
         if (strcmp(index->entries[i].path, path) == 0)
@@ -35,8 +34,6 @@ IndexEntry* index_find(Index *index, const char *path) {
     return NULL;
 }
 
-// Remove a file from the index.
-// Returns 0 on success, -1 if path not in index.
 int index_remove(Index *index, const char *path) {
     for (int i = 0; i < index->count; i++) {
         if (strcmp(index->entries[i].path, path) == 0) {
@@ -52,16 +49,10 @@ int index_remove(Index *index, const char *path) {
     return -1;
 }
 
-// Print the status of the working directory.
-//
-// Identifies files that are staged, unstaged (modified/deleted in working dir),
-// and untracked (present in working dir but not in index).
-// Returns 0.
 int index_status(const Index *index) {
     printf("Staged changes:\n");
     int staged_count = 0;
-    // Note: A true Git implementation deeply diffs against the HEAD tree here. 
-    // For this lab, displaying indexed files represents the staging intent.
+
     for (int i = 0; i < index->count; i++) {
         printf("  staged:     %s\n", index->entries[i].path);
         staged_count++;
@@ -71,14 +62,15 @@ int index_status(const Index *index) {
 
     printf("Unstaged changes:\n");
     int unstaged_count = 0;
+
     for (int i = 0; i < index->count; i++) {
         struct stat st;
         if (stat(index->entries[i].path, &st) != 0) {
             printf("  deleted:    %s\n", index->entries[i].path);
             unstaged_count++;
         } else {
-            // Fast diff: check metadata instead of re-hashing file content
-            if (st.st_mtime != (time_t)index->entries[i].mtime_sec || st.st_size != (off_t)index->entries[i].size) {
+            if (st.st_mtime != (time_t)index->entries[i].mtime_sec ||
+                st.st_size != (off_t)index->entries[i].size) {
                 printf("  modified:   %s\n", index->entries[i].path);
                 unstaged_count++;
             }
@@ -89,29 +81,30 @@ int index_status(const Index *index) {
 
     printf("Untracked files:\n");
     int untracked_count = 0;
+
     DIR *dir = opendir(".");
     if (dir) {
         struct dirent *ent;
         while ((ent = readdir(dir)) != NULL) {
-            // Skip hidden directories, parent directories, and build artifacts
-            if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) continue;
-            if (strcmp(ent->d_name, ".pes") == 0) continue;
-            if (strcmp(ent->d_name, "pes") == 0) continue; // compiled executable
-            if (strstr(ent->d_name, ".o") != NULL) continue; // object files
 
-            // Check if file is tracked in the index
+            if (strcmp(ent->d_name, ".") == 0 ||
+                strcmp(ent->d_name, "..") == 0) continue;
+
+            if (strcmp(ent->d_name, ".pes") == 0) continue;
+            if (strcmp(ent->d_name, "pes") == 0) continue;
+            if (strstr(ent->d_name, ".o")) continue;
+
             int is_tracked = 0;
             for (int i = 0; i < index->count; i++) {
                 if (strcmp(index->entries[i].path, ent->d_name) == 0) {
-                    is_tracked = 1; 
+                    is_tracked = 1;
                     break;
                 }
             }
-            
+
             if (!is_tracked) {
                 struct stat st;
-                stat(ent->d_name, &st);
-                if (S_ISREG(st.st_mode)) { // Only list regular files for simplicity
+                if (stat(ent->d_name, &st) == 0 && S_ISREG(st.st_mode)) {
                     printf("  untracked:  %s\n", ent->d_name);
                     untracked_count++;
                 }
@@ -119,44 +112,32 @@ int index_status(const Index *index) {
         }
         closedir(dir);
     }
+
     if (untracked_count == 0) printf("  (nothing to show)\n");
     printf("\n");
 
     return 0;
 }
 
-// ─── TODO: Implement these ───────────────────────────────────────────────────
+// ─── TODO IMPLEMENTATIONS ───────────────────────────────────────────────────
 
-// Load the index from .pes/index.
-//
-// HINTS - Useful functions:
-//   - fopen (with "r"), fscanf, fclose : reading the text file line by line
-//   - hex_to_hash                      : converting the parsed string to ObjectID
-//
-// Returns 0 on success, -1 on error.
+// Load index from disk
 int index_load(Index *index) {
-    // TODO: Implement index loading
-    // (See Lab Appendix for logical steps)
-
     FILE *f = fopen(INDEX_FILE, "r");
 
-    // IMPORTANT: empty index is valid state
-    if (!f) {
-        index->count = 0;
-        return 0;
-    }
-
     index->count = 0;
+
+    if (!f) return 0; // empty index is valid
 
     char line[1024];
 
     while (fgets(line, sizeof(line), f)) {
 
-        IndexEntry *e = &index->entries[index->count];
+        if (index->count >= MAX_INDEX_ENTRIES) break;
 
+        IndexEntry *e = &index->entries[index->count];
         char hash_hex[HASH_HEX_SIZE + 1];
 
-        // parse line
         if (sscanf(line, "%o %64s %lu %u %s",
                    &e->mode,
                    hash_hex,
@@ -167,27 +148,15 @@ int index_load(Index *index) {
         }
 
         hex_to_hash(hash_hex, &e->hash);
-
         index->count++;
-        if (index->count >= MAX_INDEX_ENTRIES) break;
     }
 
     fclose(f);
     return 0;
 }
-// Save the index to .pes/index atomically.
-//
-// HINTS - Useful functions and syscalls:
-//   - qsort                            : sorting the entries array by path
-//   - fopen (with "w"), fprintf        : writing to the temporary file
-//   - hash_to_hex                      : converting ObjectID for text output
-//   - fflush, fileno, fsync, fclose    : flushing userspace buffers and syncing to disk
-//   - rename                           : atomically moving the temp file over the old index
-//
-// Returns 0 on success, -1 on error.
+
+// Save index atomically
 int index_save(const Index *index) {
-    // TODO: Implement atomic index saving
-    // (See Lab Appendix for logical steps)
 
     FILE *f = fopen(INDEX_FILE, "w");
     if (!f) return -1;
@@ -212,18 +181,11 @@ int index_save(const Index *index) {
     return 0;
 }
 
-// Stage a file for the next commit.
-//
-// HINTS - Useful functions and syscalls:
-//   - fopen, fread, fclose             : reading the target file's contents
-//   - object_write                     : saving the contents as OBJ_BLOB
-//   - stat / lstat                     : getting file metadata (size, mtime, mode)
-//   - index_find                       : checking if the file is already staged
-//
-// Returns 0 on success, -1 on error.
+// Stage a file
 int index_add(Index *index, const char *path) {
-    // TODO: Implement file staging
-    // (See Lab Appendix for logical steps)
+
+    // 🔥 FIX 1: ALWAYS load index first
+    if (index_load(index) != 0) return -1;
 
     FILE *f = fopen(path, "rb");
     if (!f) return -1;
@@ -234,7 +196,6 @@ int index_add(Index *index, const char *path) {
         return -1;
     }
 
-    // read file
     fseek(f, 0, SEEK_END);
     size_t size = ftell(f);
     fseek(f, 0, SEEK_SET);
@@ -248,7 +209,6 @@ int index_add(Index *index, const char *path) {
     fread(buf, 1, size, f);
     fclose(f);
 
-    // write blob
     ObjectID id;
     if (object_write(OBJ_BLOB, buf, size, &id) != 0) {
         free(buf);
@@ -257,10 +217,10 @@ int index_add(Index *index, const char *path) {
 
     free(buf);
 
-    // update index entry
     IndexEntry *e = index_find(index, path);
 
     if (!e) {
+        if (index->count >= MAX_INDEX_ENTRIES) return -1;
         e = &index->entries[index->count++];
     }
 
@@ -268,7 +228,10 @@ int index_add(Index *index, const char *path) {
     e->hash = id;
     e->mtime_sec = st.st_mtime;
     e->size = st.st_size;
-    strncpy(e->path, path, sizeof(e->path));
+
+    // FIX: safe string copy
+    strncpy(e->path, path, sizeof(e->path) - 1);
+    e->path[sizeof(e->path) - 1] = '\0';
 
     return index_save(index);
 }
