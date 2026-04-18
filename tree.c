@@ -16,6 +16,7 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include "index.h"
+#include "object.h"
 
 // ─── Mode Constants ─────────────────────────────────────────────────────────
 
@@ -131,6 +132,16 @@ int tree_serialize(const Tree *tree, void **data_out, size_t *len_out) {
 //
 // Returns 0 on success, -1 on error.
 
+// ─── HELPER FUNCTIONS ───────────────────────────────────────
+
+static int starts_with(const char *path, const char *base) {
+    size_t len = strlen(base);
+    return strncmp(path, base, len) == 0;
+}
+
+static const char *skip_base(const char *path, const char *base) {
+    return path + strlen(base);
+}
 
 static int write_tree_level(IndexEntry *entries,
                             size_t count,
@@ -162,7 +173,7 @@ static int write_tree_level(IndexEntry *entries,
 
             te->mode = entries[i].mode;
             strcpy(te->name, rest);
-            te->hash = entries[i].id;
+            te->hash = entries[i].hash;
         } else {
             // DIRECTORY
             size_t dir_len = slash - rest;
