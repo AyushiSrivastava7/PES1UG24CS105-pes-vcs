@@ -208,61 +208,83 @@ int head_update(const ObjectID *new_commit) {
 // ─── FIXED IMPLEMENTATION ───────────────────────────────────────────────────
 
 int commit_create(const char *message, ObjectID *commit_id_out) {
-    if (!message || strlen(message) == 0) return -1;
+    printf("[DEBUG] commit_create start\n");
+
+    if (!message || strlen(message) == 0) {
+        printf("[DEBUG] empty message\n");
+        return -1;
+    }
 
     Commit c;
     memset(&c, 0, sizeof(c));
 
-    // 1. Build tree from staging index (ONLY ONCE)
+    // 1. TREE
+    printf("[DEBUG] building tree\n");
     if (tree_from_index(&c.tree) != 0) {
+        printf("[DEBUG] tree_from_index FAILED\n");
         return -1;
     }
+    printf("[DEBUG] tree OK\n");
 
-    // 2. Get parent commit (HEAD)
+    // 2. HEAD
+    printf("[DEBUG] reading head\n");
     ObjectID parent;
     if (head_read(&parent) == 0) {
         c.parent = parent;
         c.has_parent = 1;
+        printf("[DEBUG] parent exists\n");
     } else {
         c.has_parent = 0;
+        printf("[DEBUG] no parent (first commit)\n");
     }
 
-    // 3. Author + timestamp
+    // 3. AUTHOR
+    printf("[DEBUG] reading author\n");
     const char *author = pes_author();
-    if (!author) return -1;
+    if (!author) {
+        printf("[DEBUG] pes_author FAILED\n");
+        return -1;
+    }
 
     snprintf(c.author, sizeof(c.author), "%s", author);
     c.timestamp = (uint64_t)time(NULL);
 
-    // 4. Message
+    // 4. MESSAGE
     snprintf(c.message, sizeof(c.message), "%s", message);
 
-    // 5. Serialize commit
+    // 5. SERIALIZE
+    printf("[DEBUG] serializing\n");
     void *data = NULL;
     size_t len = 0;
 
     if (commit_serialize(&c, &data, &len) != 0) {
+        printf("[DEBUG] serialize FAILED\n");
         return -1;
     }
 
-    // 6. Write object
+    // 6. WRITE OBJECT
+    printf("[DEBUG] writing object\n");
     ObjectID new_id;
+
     if (object_write(OBJ_COMMIT, data, len, &new_id) != 0) {
+        printf("[DEBUG] object_write FAILED\n");
         free(data);
         return -1;
     }
 
     free(data);
 
-    // 7. Update HEAD
+    // 7. HEAD UPDATE
+    printf("[DEBUG] updating head\n");
     if (head_update(&new_id) != 0) {
+        printf("[DEBUG] head_update FAILED\n");
         return -1;
     }
 
-    // 8. Return commit id
     if (commit_id_out) {
         *commit_id_out = new_id;
     }
 
+    printf("[DEBUG] commit SUCCESS\n");
     return 0;
 }
