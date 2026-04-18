@@ -1,61 +1,97 @@
-// pes.h — Core data structures and constants for PES-VCS
+// test_objects.c — Phase 1 test program
 //
-// This file is PROVIDED. Do not modify.
+// Compile and run:
+//   gcc -Wall -Wextra -O2 -o test_objects test_objects.c object.c -lcrypto
+//   ./test_objects
 
-#ifndef PES_H
-#define PES_H
-
+#include "pes.h"
 #include <stdio.h>
-#include <stdint.h>
-#include <stddef.h>
+#include <string.h>
+#include <assert.h>
 #include <stdlib.h>
 
-// ─── Constants ───────────────────────────────────────────────────────────────
+// Forward declarations for object.c functions
+int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out);
+int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_t *len_out);
+int object_exists(const ObjectID *id);
+void object_path(const ObjectID *id, char *path_out, size_t path_size);
 
-#define HASH_SIZE 32        // SHA-256 produces 32 bytes
-#define HASH_HEX_SIZE 64    // 32 bytes = 64 hex characters
-#define PES_DIR ".pes"
-#define OBJECTS_DIR ".pes/objects"
-#define REFS_DIR ".pes/refs/heads"
-#define INDEX_FILE ".pes/index"
-#define HEAD_FILE ".pes/HEAD"
+void test_blob_storage(void) {
+    const char *content = "Hello, PES-VCS!\n";
+    ObjectID id;
 
-// ─── Object Types ────────────────────────────────────────────────────────────
+    int rc = object_write(OBJ_BLOB, content, strlen(content), &id);
+    assert(rc == 0);
 
-typedef enum {
-    OBJ_BLOB,    // File content
-    OBJ_TREE,    // Directory listing
-    OBJ_COMMIT   // Snapshot with metadata
-} ObjectType;
+    char hex[HASH_HEX_SIZE + 1];
+    hash_to_hex(&id, hex);
+    printf("Stored blob with hash: %s\n", hex);
 
-// ─── Object Identifier ──────────────────────────────────────────────────────
+    char path[512];
+    object_path(&id, path, sizeof(path));
+    printf("Object stored at: %s\n", path);
 
-typedef struct {
-    uint8_t hash[HASH_SIZE];
-} ObjectID;
+    // Read it back and verify
+    ObjectType type;
+    void *data;
+    size_t len;
+    rc = object_read(&id, &type, &data, &len);
+    assert(rc == 0);
+    assert(type == OBJ_BLOB);
+    assert(len == strlen(content));
+    assert(memcmp(data, content, len) == 0);
+    free(data);
 
-// ─── Utility Functions (implement in object.c) ─────────────────────────────
-
-// Convert a binary hash to a 64-character hex string (+ null terminator).
-// hex_out must be at least HASH_HEX_SIZE + 1 bytes.
-void hash_to_hex(const ObjectID *id, char *hex_out);
-
-// Convert a 64-character hex string to a binary hash.
-// Returns 0 on success, -1 if hex contains invalid characters.
-int hex_to_hash(const char *hex, ObjectID *id_out);
-
-// ─── Author Configuration ───────────────────────────────────────────────────
-// PES-VCS reads the author name from the environment variable PES_AUTHOR.
-// If unset, it defaults to "PES User <pes@localhost>".
-//
-// To set your name:
-//   export PES_AUTHOR="Your Name <PESXUG24CS042>"
-
-#define DEFAULT_AUTHOR "PES User <pes@localhost>"
-
-static inline const char* pes_author(void) {
-    const char *env = getenv("PES_AUTHOR");
-    return (env && env[0]) ? env : DEFAULT_AUTHOR;
+    printf("PASS: blob storage\n");
 }
 
-#endif // PES_H
+void test_deduplication(void) {
+    const char *content = "Duplicate content\n";
+    ObjectID id1, id2;
+
+    object_write(OBJ_BLOB, content, strlen(content), &id1);
+    object_write(OBJ_BLOB, content, strlen(content), &id2);
+
+    assert(memcmp(&id1, &id2, sizeof(ObjectID)) == 0);
+
+    printf("PASS: deduplication\n");
+}
+
+void test_integrity(void) {
+    const char *content = "Test integrity\n";
+    ObjectID id;
+    object_write(OBJ_BLOB, content, strlen(content), &id);
+
+    // Corrupt the stored file
+    char path[512];
+    object_path(&id, path, sizeof(path));
+
+    FILE *f = fopen(path, "r+b");
+    assert(f != NULL);
+    fseek(f, 20, SEEK_SET);
+    fputc('X', f);
+    fclose(f);
+
+    // Read should detect corruption
+    ObjectType type;
+    void *data;
+    size_t len;
+    int rc = object_read(&id, &type, &data, &len);
+    assert(rc == -1);  // Must fail integrity check
+
+    printf("PASS: integrity check\n");
+}
+
+int main(void) {
+    // Clean slate
+    int rc __attribute__((unused));
+    rc = system("rm -rf .pes");
+    rc = system("mkdir -p .pes/objects .pes/refs/heads");
+
+    test_blob_storage();
+    test_deduplication();
+    test_integrity();
+
+    printf("\nAll Phase 1 tests passed.\n");
+    return 0;
+}
