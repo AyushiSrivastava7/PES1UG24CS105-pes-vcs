@@ -6,7 +6,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-// external AP
+// external API
 int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out);
 
 // ───────────────────────────────
